@@ -111,4 +111,7 @@ REVOKE
 
 Q10. grant connect on database company to Aalekh;
 GRANT
+<<<<<<< HEAD
+>>>>>>> DCL
+=======
 >>>>>>> DCL
