@@ -1,3 +1,25 @@
+Q6. select 
+    least(oi1.product_id, oi2.product_id) AS product_id_1,
+    greatest(oi1.product_id, oi2.product_id) AS product_id_2,
+    count(*) as pair_count
+   from
+       order_items oi1
+   inner join 
+       order_items oi2 
+       on oi1.order_id = oi2.order_id and oi1.product_id < oi2.product_id
+   group by 
+       LEAST(oi1.product_id, oi2.product_id),
+       GREATEST(oi1.product_id, oi2.product_id)
+   order by 
+       product_id_1, product_id_2;
+
+
+ product_id | product_id | pair_count 
+------------+------------+------------
+          3 |          4 |          1
+          1 |          2 |          1
+          2 |          5 |          1
+(3 rows)
 Q7 select c.cust_id, c.cust_name, a.account_id, t.transaction_id, t.transaction_amount, t.transaction_date from customers c inner join accounts a on c.cust_id = a.cust_id 
    inner join transactions t on a.account_id = t.account_id where t.transaction_amount >= 5000;
 -> cust_id | cust_name | account_id | transaction_id | transaction_amount |  transaction_date   
