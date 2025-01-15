@@ -53,3 +53,5 @@ Q10 select s.supplier_id, s.supplier_name from suppliers s left join orders o on
            3 | Supplier C
 (3 rows)
 
+
+
