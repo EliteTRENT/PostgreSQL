@@ -1,250 +1,210 @@
--- Problem 1: Transfer Funds Between Accounts
--- Description: Transfer $150 from Account X to Account Y. Ensure the transfer only proceeds if Account X has sufficient funds (>= $150). 
--- If not, roll back the transaction and log the failure.
--- Query:
-DO $$
-BEGIN
-    BEGIN
-        IF (SELECT balance FROM accounts WHERE account_id = 'X001') < 150 THEN
-            INSERT INTO transaction_logs (log_id, from_account, to_account, amount, status, log_time)
-            VALUES (nextval('transaction_logs_log_id_seq'), 'X001', 'X002', 150.00, 'FAILED - Low Balance', CURRENT_TIMESTAMP);
-            RAISE EXCEPTION 'Insufficient funds in account X001';
-        END IF;
-        UPDATE accounts
-        SET balance = balance - 150
-        WHERE account_id = 'X001';
-        UPDATE accounts
-        SET balance = balance + 150
-        WHERE account_id = 'X002';
-        INSERT INTO transaction_logs (log_id, from_account, to_account, amount, status, log_time)
-        VALUES (nextval('transaction_logs_log_id_seq'), 'X001', 'X002', 150.00, 'SUCCESS', CURRENT_TIMESTAMP);
-    EXCEPTION
-        WHEN OTHERS THEN
-            ROLLBACK;
-            RAISE NOTICE 'Transaction failed: %', SQLERRM;
-    END;
-END $$;
+--Problem 1: Transactional Insert With Error Simulation & Rollback
 
--- Problem 2: Process a Multi-Item Purchase
--- Description: Process a purchase for two items (Item A and Item B). Reserve Item A if in stock, but roll back Item B reservation if out of stock, keeping Item A.
--- Query:
+I/P: 
 BEGIN;
-    UPDATE inventory
-    SET available_qty = available_qty - 1
-    WHERE item_code = 'I001' AND available_qty > 0;
-    SAVEPOINT after_first;
-    DO $$
-    BEGIN
-        IF (SELECT available_qty FROM inventory WHERE item_code = 'I002') <= 0 THEN
-            RAISE EXCEPTION 'Item I002 out of stock';
-        END IF;
-        UPDATE inventory
-        SET available_qty = available_qty - 1
-        WHERE item_code = 'I002' AND available_qty > 0;
-        IF NOT FOUND THEN
-            RAISE EXCEPTION 'Item I002 reservation failed';
-        END IF;
-    END $$;
-EXCEPTION
-    WHEN OTHERS THEN
-        ROLLBACK TO SAVEPOINT after_first;
-        RAISE NOTICE 'Second item reservation failed: %', SQLERRM;
-END;
+
+INSERT INTO students ("Gender", "Caste", "coaching", "Class_ten_education", "twelve_education", "medium", "Class_X_Percentage", "Class_XII_Percentage", "Father_occupation", "Mother_occupation", "time", "Performance")
+VALUES ('Female', 'OBC', 'Yes', 'CBSE', 'CBSE', 'English', 85.0, 90.2, 'Doctor', 'Teacher', 3, 'Pass');
+
+select count(*) from students;
+
+SELECT 1/0;
+
 COMMIT;
 
--- Problem 3: Apply a Bonus to Staff
--- Description: Apply a 5% bonus to all staff in the 'Marketing' team. Ensure no concurrent salary modifications during the process.
--- Query:
-SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
-BEGIN;
-DO $$
-DECLARE
-    total_salary DECIMAL(10,2);
+select count(*) from students;
+
+O/P: 
 BEGIN
-    SELECT SUM(salary) INTO total_salary
-    FROM staff
-    WHERE team = 'Marketing';
-    RAISE NOTICE 'Total Marketing salary before bonus: %', total_salary;
-END $$;
-UPDATE staff
-SET salary = salary * 1.05
-WHERE team = 'Marketing';
+
+INSERT 0 1
+
+count
+-------
+   667
+(1 row)
+
+ROLLBACK
+
+ERROR:  division by zero
+
+count
+-------
+   666
+(1 row)
+
+
+--Problem 2: Use of SAVEPOINT and ROLLBACK TO for Partial Undo
+
+I/P:
+BEGIN;
+
+SAVEPOINT before_first;
+
+INSERT INTO students ("Gender", "Caste", "coaching", "Class_ten_education", "twelve_education", "medium", "Class_X_Percentage", "Class_XII_Percentage", "Father_occupation", "Mother_occupation", "time", "Performance")
+VALUES ('Male', 'SC', 'No', 'State Board', 'CBSE', 'Hindi', 76.0, 82.5, 'Farmer', 'Homemaker', 5, 'Pass');
+
+SAVEPOINT after_first;
+
+
+INSERT INTO students VALUES ('??', '??', '??', '??', '??', '??', -999, -999, '??', '??', 0, '??');
+
+ROLLBACK TO after_first;
+
+
+INSERT INTO students ("Gender", "Caste", "coaching", "Class_ten_education", "twelve_education", "medium", "Class_X_Percentage", "Class_XII_Percentage", "Father_occupation", "Mother_occupation", "time", "Performance")
+VALUES ('Male', 'GEN', 'Yes', 'CBSE', 'CBSE', 'English', 91.5, 94.0, 'Engineer', 'Engineer', 4, 'Pass');
+
 COMMIT;
 
--- Problem 4: Register a New User and Create an Order
--- Description: Add a new user and create an order. If the order amount is invalid (e.g., negative), retain the user but skip the order.
--- Query:
-BEGIN;
-    INSERT INTO users (username)
-    VALUES ('NewUser1');
-    DO $$
-    DECLARE
-        new_user_id INT;
-    BEGIN
-        new_user_id := currval('users_user_id_seq');
-        BEGIN
-            IF (SELECT 1 WHERE -50.00 < 0) IS NOT NULL THEN
-                RAISE EXCEPTION 'Invalid order amount';
-            END IF;
-            INSERT INTO purchases (user_id, total)
-            VALUES (new_user_id, 100.00);
-        EXCEPTION
-            WHEN OTHERS THEN
-                RAISE NOTICE 'Order creation failed: %', SQLERRM;
-        END;
-    END $$;
+O/P:
+BEGIN
+
+SAVEPOINT
+
+INSERT 0 1
+
+SAVEPOINT
+
+ERROR:  invalid input syntax for type integer: "??"
+LINE 1: INSERT INTO students VALUES ('??', '??', '??', '??', '??', '...')
+
+ROLLBACK
+
+INSERT 0 1
+
+COMMIT
+
+--Problem 3: Read only transaction
+
+I/P 
+BEGIN TRANSACTION READ ONLY;
+
+SELECT "Gender", COUNT(*) 
+FROM students 
+GROUP BY "Gender";
+
 COMMIT;
 
--- Problem 5: Book Limited Reservations
--- Description: Book the last available spots for two events (E001 and E002). Ensure consistent locking to avoid conflicts.
--- Query:
+O/P
+BEGIN
+
+Gender | count
+--------+-------
+ female |   311
+ Male   |     2
+ male   |   355
+(3 rows)
+
+--Problem 4: Nested SAVEPOINTs With Stepwise Rollback
+
+I/P
 BEGIN;
-    UPDATE events
-    SET available_spots = available_spots - 1
-    WHERE event_id = 'E001' AND available_spots > 0;
-    DO $$
-    BEGIN
-        IF NOT FOUND THEN
-            RAISE EXCEPTION 'No spots available on E001';
-        END IF;
-        UPDATE events
-        SET available_spots = available_spots - 1
-        WHERE event_id = 'E002' AND available_spots > 0;
-        IF NOT FOUND THEN
-            RAISE EXCEPTION 'No spots available on E002';
-        END IF;
-    END $$;
-EXCEPTION
-    WHEN OTHERS THEN
-        ROLLBACK;
-        RAISE NOTICE 'Reservation failed: %', SQLERRM;
-END;
+
+SAVEPOINT s1;
+
+INSERT INTO students ("Gender", "Caste", "coaching", "Class_ten_education", "twelve_education","medium", "Class_X_Percentage", "Class_XII_Percentage", "Father_occupation", "Mother_occupation", "time", "Performance"
+) VALUES ('Female', 'General', 'Yes', 'CBSE', 'CBSE', 'English', 92, 95, 'Government Job', 'Teacher', 4, 'Good');
+
+SAVEPOINT s2;
+
+INSERT INTO students (
+    "Gender", "Caste", "coaching", "Class_ten_education", "twelve_education",
+    "medium", "Class_X_Percentage", "Class_XII_Percentage",
+    "Father_occupation", "Mother_occupation", "time", "Performance"
+) VALUES (
+    'X', 'X', 'X', 'X', 'X',
+    'X', -1, -1, 'X', 'X', 0, 'X'
+);
+
+ROLLBACK TO s2;
+
+SAVEPOINT s3;
+
+INSERT INTO students (
+    "Gender", "Caste", "coaching", "Class_ten_education", "twelve_education",
+    "medium", "Class_X_Percentage", "Class_XII_Percentage",
+    "Father_occupation", "Mother_occupation", "time", "Performance"
+) VALUES (
+    'Male', 'SC', 'No', 'State Board', 'CBSE',
+    'Hindi', 78, 81, 'Farmer', 'Homemaker', 2, 'Average'
+);
+
 COMMIT;
 
--- Problem 6: Limit Order Quantity
--- Description: Process an order for 3 units of Item A. Roll back if the quantity exceeds 2.
--- Query:
-DO $$
+O/P
 BEGIN
-    BEGIN
-        INSERT INTO orders (user_id, item_code, quantity, total_price, status)
-        VALUES (1, 'I001', 3, 150.00, 'pending');
-        IF (SELECT quantity FROM orders WHERE order_id = currval('orders_order_id_seq')) > 2 THEN
-            RAISE EXCEPTION 'Quantity exceeds limit';
-        END IF;
-        UPDATE orders
-        SET status = 'completed'
-        WHERE order_id = currval('orders_order_id_seq');
-    EXCEPTION
-        WHEN OTHERS THEN
-            ROLLBACK;
-            DELETE FROM orders WHERE order_id = currval('orders_order_id_seq');
-            RAISE NOTICE 'Rolled back: %', SQLERRM;
-    END;
-END $$;
 
--- Problem 7: Undo a Completed Order
--- Description: Cancel the latest order for User 1 and restore the item stock.
--- Query:
-DO $$
-DECLARE
-    order_id_to_cancel INT;
-    item_code_to_restore TEXT;
-    qty_to_restore INT;
-BEGIN
-    BEGIN
-        SELECT order_id, item_code, quantity INTO order_id_to_cancel, item_code_to_restore, qty_to_restore
-        FROM orders
-        WHERE user_id = 1
-        ORDER BY order_id DESC
-        LIMIT 1;
-        IF order_id_to_cancel IS NOT NULL THEN
-            UPDATE inventory
-            SET available_qty = available_qty + qty_to_restore
-            WHERE item_code = item_code_to_restore;
-            DELETE FROM orders
-            WHERE order_id = order_id_to_cancel;
-        ELSE
-            RAISE EXCEPTION 'No orders to cancel';
-        END IF;
-    EXCEPTION
-        WHEN OTHERS THEN
-            ROLLBACK;
-            RAISE NOTICE 'Rolled back: %', SQLERRM;
-    END;
-END $$;
+SAVEPOINT
 
--- Problem 8: Adjust Order Total
--- Description: Increase the total of User 2’s latest pending order by 10%.
--- Query:
-DO $$
-DECLARE
-    order_id_to_adjust INT;
-BEGIN
-    BEGIN
-        SELECT order_id INTO order_id_to_adjust
-        FROM orders
-        WHERE user_id = 2 AND status = 'pending'
-        ORDER BY order_id DESC
-        LIMIT 1;
-        IF order_id_to_adjust IS NOT NULL THEN
-            UPDATE orders
-            SET total_price = total_price * 1.10
-            WHERE order_id = order_id_to_adjust;
-        ELSE
-            RAISE EXCEPTION 'No pending orders';
-        END IF;
-    EXCEPTION
-        WHEN OTHERS THEN
-            ROLLBACK;
-            RAISE NOTICE 'Rolled back: %', SQLERRM;
-    END;
-END $$;
+INSERT 0 1
 
--- Problem 9: Mark Item as Out of Stock
--- Description: Set Item B (I002) stock to 0, roll back if already 0.
--- Query:
-DO $$
-BEGIN
-    BEGIN
-        IF (SELECT available_qty FROM inventory WHERE item_code = 'I002') = 0 THEN
-            RAISE EXCEPTION 'Already out of stock';
-        END IF;
-        UPDATE inventory
-        SET available_qty = 0
-        WHERE item_code = 'I002';
-    EXCEPTION
-        WHEN OTHERS THEN
-            ROLLBACK;
-            RAISE NOTICE 'Rolled back: %', SQLERRM;
-    END;
-END $$;
+SAVEPOINT
 
--- Problem 10: Verify Order Total
--- Description: Commit User 1’s latest order if total matches item price × quantity.
--- Query:
-DO $$
-DECLARE
-    order_id_to_verify INT;
-    expected_total DECIMAL;
+INSERT 0 1
+
+ROLLBACK
+
+SAVEPOINT
+
+INSERT 0 1
+
+COMMIT
+
+--Problem 5: Aborting Stale Transactions Using ROLLBACK Timeout (manually)
+
+I/P
+BEGIN;
+
+SELECT 'Query completed after a 15-second delay' AS message, current_timestamp AS timestamp
+WHERE pg_sleep(5) IS NOT NULL;
+
+ROLLBACK;
+
+O/P
 BEGIN
-    BEGIN
-        SELECT order_id, (SELECT price * quantity FROM inventory WHERE item_code = o.item_code)
-        INTO order_id_to_verify, expected_total
-        FROM orders o
-        WHERE user_id = 1
-        ORDER BY order_id DESC
-        LIMIT 1;
-        IF order_id_to_verify IS NOT NULL AND (SELECT total_price FROM orders WHERE order_id = order_id_to_verify) = expected_total THEN
-            UPDATE orders
-            SET status = 'completed'
-            WHERE order_id = order_id_to_verify;
-        ELSE
-            RAISE EXCEPTION 'Price mismatch';
-        END IF;
-    EXCEPTION
-        WHEN OTHERS THEN
-            ROLLBACK;
-            RAISE NOTICE 'Rolled back: %', SQLERRM;
-    END;
-END $$;
+
+ message                 |            timestamp
+-----------------------------------------+----------------------------------
+ Query completed after a 5-second delay | 2025-04-10 14:26:56.445843+05:30
+(1 row)
+
+ROLLBACK
+
+--Problem 6: Transfer Concept: Move Students to 'Alumni' Table, Then Commit
+
+I/P
+BEGIN;
+
+INSERT INTO alumni 
+SELECT * FROM students 
+WHERE "Performance" = 'Pass';
+
+DELETE FROM students 
+WHERE "Performance" = 'Pass';
+
+COMMIT;
+
+O/P
+BEGIN
+
+INSERT 0 2
+
+DELETE 2
+
+COMMIT
+
+
+ select * from alumni;
+ id  | Gender | Caste | coaching | Class_ten_education | twelve_education | medium  | Class_X_Percentage | Class_XII_Percentage | Father_occupation | Mother_occupation | time | Performance
+-----+--------+-------+----------+---------------------+------------------+---------+--------------------+----------------------+-------------------+-------------------+------+-------------
+ 670 | Male   | SC    | No       | State Board         | CBSE             | Hindi   | 76.0               | 82.5                 | Farmer            | Homemaker         | 5    | Pass
+ 671 | Male   | GEN   | Yes      | CBSE                | CBSE             | English | 91.5               | 94.0                 | Engineer          | Engineer          | 4    | Pass
+(2 rows)
+
+
+
+
+ 
+
+
